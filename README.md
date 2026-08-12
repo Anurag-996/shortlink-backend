@@ -1,4 +1,4 @@
-# ShortLink — High-Performance URL Shortener & Analytics Monolith
+# ShortLink — High-Performance URL Shortener & Analytics Platform
 
 [![Java](https://img.shields.io/badge/Java-25-orange?logo=openjdk)](https://openjdk.org/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1.0-brightgreen?logo=springboot)](https://spring.io/projects/spring-boot)
@@ -9,7 +9,7 @@ An enterprise-grade, high-throughput URL shortening and clickstream analytics pl
 
 ---
 
-## 🏛️ Monolith Architecture
+## 🏛️ Application Architecture
 
 ```
                                   [ Client / Browser / Apps ]
