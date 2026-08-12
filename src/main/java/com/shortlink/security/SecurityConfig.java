@@ -3,8 +3,9 @@ package com.shortlink.security;
 import com.shortlink.config.CookieProperties;
 import com.shortlink.config.FrontendProperties;
 import com.shortlink.config.JwtProperties;
-import com.shortlink.security.jwt.JwtAuthenticationFilter;
 import com.shortlink.constants.SecurityEndpoints;
+import com.shortlink.security.jwt.JwtAuthenticationFilter;
+import com.shortlink.security.ratelimit.RateLimitingFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -19,12 +20,13 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
-// Spring Security configuration for the ShortLink monolith application.
+// Spring Security configuration for the ShortLink application.
 @Configuration
 @RequiredArgsConstructor
 @EnableConfigurationProperties({JwtProperties.class, CookieProperties.class, FrontendProperties.class})
 public class SecurityConfig {
 
+    private final RateLimitingFilter rateLimitingFilter;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final SecurityAuthenticationEntryPoint authenticationEntryPoint;
 
@@ -42,6 +44,7 @@ public class SecurityConfig {
                         .requestMatchers(SecurityEndpoints.AUTHENTICATED_ENDPOINTS).authenticated()
                         .anyRequest().authenticated()
                 )
+                .addFilterBefore(rateLimitingFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
