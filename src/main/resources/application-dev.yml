@@ -1,0 +1,29 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: ${DATABASE_URL}
+    username: ${DATABASE_USERNAME}
+    password: ${DATABASE_PASSWORD}
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
+  data:
+    redis:
+      url: ${REDIS_URL}
+
+app:
+  base-url: ${BASE_URL:http://localhost:8080}
+
+  jwt:
+    secret: ${JWT_SECRET}
+
+  cookie:
+    secure: false
+
+  frontend:
+    url: ${FRONTEND_URL:http://localhost:3000}
