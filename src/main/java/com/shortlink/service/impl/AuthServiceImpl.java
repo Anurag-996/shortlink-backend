@@ -1,22 +1,26 @@
 package com.shortlink.service.impl;
 
+import java.time.Instant;
+
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.shortlink.dto.request.LoginRequest;
+import com.shortlink.entity.PendingRegistration;
 import com.shortlink.entity.RefreshToken;
 import com.shortlink.exception.AccountDisabledException;
 import com.shortlink.exception.InvalidCredentialsException;
 import com.shortlink.exception.InvalidTokenException;
+import com.shortlink.repository.PendingRegistrationRepository;
 import com.shortlink.repository.RefreshTokenRepository;
 import com.shortlink.security.jwt.JwtService;
 import com.shortlink.service.AuthService;
 import com.shortlink.user.User;
 import com.shortlink.user.UserRepository;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.time.Instant;
 
 // Implementation of AuthService managing credentials validation, JWT issuance, and refresh token rotation.
 @Slf4j
@@ -25,6 +29,7 @@ import java.time.Instant;
 public class AuthServiceImpl implements AuthService {
 
     private final UserRepository userRepository;
+    private final PendingRegistrationRepository pendingRegistrationRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
@@ -32,35 +37,97 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public AuthSessionResult login(LoginRequest request) {
+
         String normalizedEmail = request.email().trim().toLowerCase();
 
-        User user = userRepository.findByEmail(normalizedEmail)
-                .orElseThrow(InvalidCredentialsException::new);
+        User user = userRepository.findByEmail(normalizedEmail).orElse(null);
 
-        if (!passwordEncoder.matches(request.password(), user.getPassword())) {
-            log.warn("Invalid password attempt for email: {}", normalizedEmail);
+        if (user == null) {
+
+            PendingRegistration pending
+                    = pendingRegistrationRepository
+                            .findByEmail(normalizedEmail)
+                            .orElse(null);
+
+            if (pending != null
+                    && passwordEncoder.matches(
+                            request.password(),
+                            pending.getPasswordHash())) {
+
+                log.warn(
+                        "Login attempt for pending unverified email: {}",
+                        normalizedEmail
+                );
+
+                throw new AccountDisabledException(
+                        "Please verify your email address before logging in"
+                );
+            }
+
+            throw new InvalidCredentialsException();
+        }
+
+        if (!passwordEncoder.matches(
+                request.password(),
+                user.getPassword())) {
+
+            log.warn(
+                    "Invalid password attempt for email: {}",
+                    normalizedEmail
+            );
+
             throw new InvalidCredentialsException();
         }
 
         if (!user.isEnabled()) {
-            log.warn("Login attempt for disabled account: {}", normalizedEmail);
-            throw new AccountDisabledException();
+
+            log.warn(
+                    "Login attempt for disabled account: {}",
+                    normalizedEmail
+            );
+
+            throw new AccountDisabledException(
+                    "Please verify your email address before logging in"
+            );
         }
 
-        // Multi-session policy: Issue independent rotating refresh token for this device/session
-        String accessToken = jwtService.generateAccessToken(user);
-        String refreshTokenString = jwtService.generateRefreshTokenString();
-        long refreshExpirationMillis = jwtService.getRefreshTokenExpirationMillis();
+        if (user.isDeletionPending()) {
+
+            log.warn(
+                    "Login attempt for account pending deletion: {}",
+                    normalizedEmail
+            );
+
+            throw new AccountDisabledException(
+                    "Your account is pending deletion"
+            );
+        }
+
+        // Multi-session policy: Issue independent rotating refresh token for this device/session.
+        String accessToken
+                = jwtService.generateAccessToken(user);
+
+        String refreshTokenString
+                = jwtService.generateRefreshTokenString();
+
+        long refreshExpirationMillis
+                = jwtService.getRefreshTokenExpirationMillis();
 
         RefreshToken refreshToken = RefreshToken.builder()
                 .token(refreshTokenString)
                 .user(user)
-                .expiresAt(Instant.now().plusMillis(refreshExpirationMillis))
+                .expiresAt(
+                        Instant.now().plusMillis(refreshExpirationMillis)
+                )
                 .revoked(false)
                 .build();
 
         refreshTokenRepository.save(refreshToken);
-        log.info("User [{}] successfully authenticated", normalizedEmail);
+
+        log.info(
+                "User [{}] successfully authenticated",
+                normalizedEmail
+        );
 
         return new AuthSessionResult(
                 accessToken,

@@ -9,8 +9,10 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.shortlink.analytics.AnalyticsService;
-import com.shortlink.analytics.UrlClickedEvent;
+import com.shortlink.analytics.service.AnalyticsService;
+import com.shortlink.analytics.util.GeoLocationResolver;
+import com.shortlink.analytics.util.GeoLocationResolver.GeoLocation;
+import com.shortlink.repository.UrlRepository;
 import com.shortlink.service.UrlService;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -24,6 +26,7 @@ import lombok.extern.slf4j.Slf4j;
 public class RedirectController {
 
     private final UrlService urlService;
+    private final UrlRepository urlRepository;
     private final AnalyticsService analyticsService;
 
     // GET /{shortCode} - Redirects short code to original target URL and records click analytics event. Returns HTTP 302 Found.
@@ -35,13 +38,15 @@ public class RedirectController {
         String ipAddress = extractClientIp(request);
         String userAgent = request.getHeader(HttpHeaders.USER_AGENT);
         String referrer = request.getHeader(HttpHeaders.REFERER);
+        GeoLocation geo = GeoLocationResolver.resolve(request, ipAddress);
 
         String originalUrl = urlService.getOriginalUrlAndIncrementClick(shortCode);
 
-        // Record click analytics event directly within the application
+        // Record click analytics event directly and non-blockingly
         try {
-            UrlClickedEvent event = UrlClickedEvent.of(shortCode, ipAddress, userAgent, referrer);
-            analyticsService.processClickEvent(event);
+            urlRepository.findByShortCode(shortCode).ifPresent(url ->
+                    analyticsService.recordClick(url, ipAddress, userAgent, referrer, geo.country(), geo.region(), geo.city())
+            );
         } catch (Exception e) {
             log.error("Failed to record click analytics for shortCode {}: {}", shortCode, e.getMessage());
         }

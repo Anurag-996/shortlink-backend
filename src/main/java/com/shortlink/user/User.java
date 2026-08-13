@@ -38,6 +38,9 @@ public class User {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "name", length = 255)
+    private String name;
+
     @Column(name = "email", nullable = false, unique = true, length = 255)
     private String email;
 
@@ -46,11 +49,22 @@ public class User {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "role", nullable = false, length = 50)
-    private Role role;
+    @Builder.Default
+    private Role role = Role.USER;
 
     @Builder.Default
     @Column(name = "enabled", nullable = false)
     private boolean enabled = true;
+
+    @Builder.Default
+    @Column(name = "deletion_pending", nullable = false)
+    private boolean deletionPending = false;
+
+    @Column(name = "deletion_requested_at")
+    private Instant deletionRequestedAt;
+
+    @Column(name = "deletion_scheduled_at")
+    private Instant deletionScheduledAt;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)

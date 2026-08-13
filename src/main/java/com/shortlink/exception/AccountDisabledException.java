@@ -6,6 +6,6 @@ public class AccountDisabledException extends AuthException {
     }
 
     public AccountDisabledException() {
-        super("User account is disabled");
+        super("Please verify your email address before logging in");
     }
 }

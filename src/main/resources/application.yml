@@ -41,3 +41,14 @@ app:
 
   redis:
     ttl-seconds: 86400
+
+  auth:
+    verification-token-expiration-hours: 24
+    reset-token-expiration-hours: 1
+    deletion-grace-days: 7
+
+  logo-url: ${APP_LOGO_URL:https://tinyclick.in/icon.png}
+
+mail:
+  from: ${MAIL_FROM:no-reply@tinyclick.in}
+

@@ -31,6 +31,14 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.UNAUTHORIZED, ex.getMessage(), request.getRequestURI(), null);
     }
 
+    @ExceptionHandler(AuthException.class)
+    public ResponseEntity<ErrorResponse> handleAuthException(
+            AuthException ex,
+            HttpServletRequest request) {
+        log.warn("Authentication required: {}", ex.getMessage());
+        return buildResponse(HttpStatus.UNAUTHORIZED, ex.getMessage(), request.getRequestURI(), null);
+    }
+
     @ExceptionHandler(InvalidTokenException.class)
     public ResponseEntity<ErrorResponse> handleInvalidToken(
             InvalidTokenException ex,
@@ -45,6 +53,14 @@ public class GlobalExceptionHandler {
             HttpServletRequest request) {
         log.warn("Disabled account access attempt: {}", ex.getMessage());
         return buildResponse(HttpStatus.FORBIDDEN, ex.getMessage(), request.getRequestURI(), null);
+    }
+
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> handleAccessDenied(
+            org.springframework.security.access.AccessDeniedException ex,
+            HttpServletRequest request) {
+        log.warn("Access denied: {}", ex.getMessage());
+        return buildResponse(HttpStatus.FORBIDDEN, "Access denied: You do not have permission to access this resource", request.getRequestURI(), null);
     }
 
     // ================= VALIDATION & REQUEST SYNTAX =================
@@ -103,6 +119,21 @@ public class GlobalExceptionHandler {
             CustomAliasAlreadyExistsException ex,
             HttpServletRequest request) {
         return buildResponse(HttpStatus.CONFLICT, ex.getMessage(), request.getRequestURI(), null);
+    }
+
+    @ExceptionHandler(DuplicateResourceException.class)
+    public ResponseEntity<ErrorResponse> handleDuplicateResource(
+            DuplicateResourceException ex,
+            HttpServletRequest request) {
+        return buildResponse(HttpStatus.CONFLICT, ex.getMessage(), request.getRequestURI(), null);
+    }
+
+    @ExceptionHandler(EmailSendingException.class)
+    public ResponseEntity<ErrorResponse> handleEmailSending(
+            EmailSendingException ex,
+            HttpServletRequest request) {
+        log.error("Email delivery failed: {}", ex.getMessage(), ex);
+        return buildResponse(HttpStatus.INTERNAL_SERVER_ERROR, ex.getMessage(), request.getRequestURI(), null);
     }
 
     // ================= DATABASE =================

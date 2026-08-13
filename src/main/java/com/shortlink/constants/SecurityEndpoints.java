@@ -11,6 +11,11 @@ public final class SecurityEndpoints {
     public static final String[] PUBLIC_ENDPOINTS = {
         "/api/auth/login",
         "/api/auth/refresh",
+        "/api/auth/register",
+        "/api/auth/verify-email",
+        "/api/auth/resend-verification",
+        "/api/auth/forgot-password",
+        "/api/auth/reset-password",
         "/actuator/health",
         "/actuator/info"
     };
@@ -26,12 +31,18 @@ public final class SecurityEndpoints {
 
     // Endpoints requiring ADMIN role
     public static final String[] ADMIN_ENDPOINTS = {
-        "/api/analytics/**"
+        "/api/admin/**"
     };
 
     // Endpoints requiring authentication
     public static final String[] AUTHENTICATED_ENDPOINTS = {
+        "/api/auth/me",
+        "/api/auth/profile",
         "/api/auth/logout",
-        "/api/auth/logout-all"
+        "/api/auth/logout-all",
+        "/api/auth/change-password",
+        "/api/auth/request-deletion",
+        "/api/auth/account",
+        "/api/analytics/**"
     };
 }
