@@ -157,6 +157,18 @@ public class AuthController {
         return ResponseEntity.ok(AuthResponse.bearer(result.accessToken(), result.expiresIn()));
     }
 
+    // POST /api/auth/cancel-deletion - Cancels scheduled 7-day account deletion, re-enables user, sets refresh cookie, returns access JWT.
+    @PostMapping("/cancel-deletion")
+    public ResponseEntity<AuthResponse> cancelAccountDeletion(
+            @Valid @RequestBody LoginRequest request,
+            HttpServletResponse response) {
+
+        AuthSessionResult result = authService.cancelAccountDeletion(request);
+        cookieService.setRefreshTokenCookie(response, result.refreshToken(), result.refreshTokenMaxAgeMillis());
+
+        return ResponseEntity.ok(AuthResponse.bearer(result.accessToken(), result.expiresIn()));
+    }
+
     // POST /api/auth/refresh - Reads HttpOnly refresh cookie, rotates token, sets new cookie, returns fresh access JWT.
     @PostMapping("/refresh")
     public ResponseEntity<AuthResponse> refresh(

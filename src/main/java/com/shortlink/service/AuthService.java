@@ -17,6 +17,9 @@ public interface AuthService {
     // Revokes all active refresh tokens for the authenticated user across all devices.
     void logoutAll(String userEmail);
 
+    // Cancels scheduled 7-day account deletion, re-enables user, and authenticates session.
+    AuthSessionResult cancelAccountDeletion(LoginRequest request);
+
     record AuthSessionResult(
         String accessToken,
         long expiresIn,

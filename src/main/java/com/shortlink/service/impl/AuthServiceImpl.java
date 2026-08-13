@@ -1,6 +1,8 @@
 package com.shortlink.service.impl;
 
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -9,7 +11,9 @@ import org.springframework.transaction.annotation.Transactional;
 import com.shortlink.dto.request.LoginRequest;
 import com.shortlink.entity.PendingRegistration;
 import com.shortlink.entity.RefreshToken;
+import com.shortlink.exception.AccountDeletionPendingException;
 import com.shortlink.exception.AccountDisabledException;
+import com.shortlink.exception.BadRequestException;
 import com.shortlink.exception.InvalidCredentialsException;
 import com.shortlink.exception.InvalidTokenException;
 import com.shortlink.repository.PendingRegistrationRepository;
@@ -28,6 +32,10 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
 
+    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter
+            .ofPattern("yyyy-MM-dd HH:mm:ss 'UTC'")
+            .withZone(ZoneId.of("UTC"));
+
     private final UserRepository userRepository;
     private final PendingRegistrationRepository pendingRegistrationRepository;
     private final RefreshTokenRepository refreshTokenRepository;
@@ -40,32 +48,26 @@ public class AuthServiceImpl implements AuthService {
 
         String normalizedEmail = request.email().trim().toLowerCase();
 
-        User user = userRepository.findByEmail(normalizedEmail).orElse(null);
+        User user = userRepository.findByEmail(normalizedEmail)
+                .orElseGet(() -> {
+                    log.warn("Login failed: email [{}] not found", normalizedEmail);
 
-        if (user == null) {
-
-            PendingRegistration pending
-                    = pendingRegistrationRepository
+                    PendingRegistration pending = pendingRegistrationRepository
                             .findByEmail(normalizedEmail)
                             .orElse(null);
 
-            if (pending != null
-                    && passwordEncoder.matches(
-                            request.password(),
-                            pending.getPasswordHash())) {
+                    if (pending != null) {
+                        log.warn(
+                                "Found pending unverified registration for email: {}",
+                                normalizedEmail
+                        );
+                        throw new AccountDisabledException(
+                                "Please verify your email address before logging in"
+                        );
+                    }
 
-                log.warn(
-                        "Login attempt for pending unverified email: {}",
-                        normalizedEmail
-                );
-
-                throw new AccountDisabledException(
-                        "Please verify your email address before logging in"
-                );
-            }
-
-            throw new InvalidCredentialsException();
-        }
+                    throw new InvalidCredentialsException();
+                });
 
         if (!passwordEncoder.matches(
                 request.password(),
@@ -79,6 +81,23 @@ public class AuthServiceImpl implements AuthService {
             throw new InvalidCredentialsException();
         }
 
+        if (user.isDeletionPending()) {
+
+            log.warn(
+                    "Login attempt for account pending deletion: {}",
+                    normalizedEmail
+            );
+
+            String dateMsg = "";
+            if (user.getDeletionScheduledAt() != null) {
+                dateMsg = " on " + DATE_FORMATTER.format(user.getDeletionScheduledAt());
+            }
+
+            throw new AccountDeletionPendingException(
+                    "Your account is scheduled for permanent deletion" + dateMsg
+            );
+        }
+
         if (!user.isEnabled()) {
 
             log.warn(
@@ -88,18 +107,6 @@ public class AuthServiceImpl implements AuthService {
 
             throw new AccountDisabledException(
                     "Please verify your email address before logging in"
-            );
-        }
-
-        if (user.isDeletionPending()) {
-
-            log.warn(
-                    "Login attempt for account pending deletion: {}",
-                    normalizedEmail
-            );
-
-            throw new AccountDisabledException(
-                    "Your account is pending deletion"
             );
         }
 
@@ -202,5 +209,54 @@ public class AuthServiceImpl implements AuthService {
                         log.info("All refresh sessions successfully revoked for user [{}]", user.getEmail());
                     });
         }
+    }
+
+    @Override
+    @Transactional
+    public AuthSessionResult cancelAccountDeletion(LoginRequest request) {
+        String normalizedEmail = request.email().trim().toLowerCase();
+
+        User user = userRepository.findByEmail(normalizedEmail)
+                .orElseThrow(InvalidCredentialsException::new);
+
+        if (!passwordEncoder.matches(request.password(), user.getPassword())) {
+            log.warn("Invalid password attempt for cancel deletion on email: {}", normalizedEmail);
+            throw new InvalidCredentialsException();
+        }
+
+        if (!user.isDeletionPending()) {
+            throw new BadRequestException("Account is not scheduled for deletion");
+        }
+
+        // Restore user account and cancel deletion
+        user.setDeletionPending(false);
+        user.setDeletionRequestedAt(null);
+        user.setDeletionScheduledAt(null);
+        user.setEnabled(true);
+
+        userRepository.save(user);
+
+        log.info("Cancelled scheduled deletion and restored user account [{}]", normalizedEmail);
+
+        // Issue new authentication tokens for immediate login
+        String accessToken = jwtService.generateAccessToken(user);
+        String refreshTokenString = jwtService.generateRefreshTokenString();
+        long refreshExpirationMillis = jwtService.getRefreshTokenExpirationMillis();
+
+        RefreshToken refreshToken = RefreshToken.builder()
+                .token(refreshTokenString)
+                .user(user)
+                .expiresAt(Instant.now().plusMillis(refreshExpirationMillis))
+                .revoked(false)
+                .build();
+
+        refreshTokenRepository.save(refreshToken);
+
+        return new AuthSessionResult(
+                accessToken,
+                jwtService.getAccessTokenExpirationMillis(),
+                refreshTokenString,
+                refreshExpirationMillis
+        );
     }
 }

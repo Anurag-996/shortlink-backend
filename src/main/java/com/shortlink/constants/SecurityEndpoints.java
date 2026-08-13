@@ -10,6 +10,7 @@ public final class SecurityEndpoints {
     // Publicly accessible auth and actuator endpoints
     public static final String[] PUBLIC_ENDPOINTS = {
         "/api/auth/login",
+        "/api/auth/cancel-deletion",
         "/api/auth/refresh",
         "/api/auth/register",
         "/api/auth/verify-email",

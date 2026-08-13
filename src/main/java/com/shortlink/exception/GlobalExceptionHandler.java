@@ -55,6 +55,14 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.FORBIDDEN, ex.getMessage(), request.getRequestURI(), null);
     }
 
+    @ExceptionHandler(AccountDeletionPendingException.class)
+    public ResponseEntity<ErrorResponse> handleAccountDeletionPending(
+            AccountDeletionPendingException ex,
+            HttpServletRequest request) {
+        log.warn("Deletion-pending account login attempt: {}", ex.getMessage());
+        return buildResponse(HttpStatus.FORBIDDEN, ex.getMessage(), request.getRequestURI(), null);
+    }
+
     @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
     public ResponseEntity<ErrorResponse> handleAccessDenied(
             org.springframework.security.access.AccessDeniedException ex,
