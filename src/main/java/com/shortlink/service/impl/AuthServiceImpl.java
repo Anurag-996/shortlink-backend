@@ -3,6 +3,7 @@ package com.shortlink.service.impl;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.Optional;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -35,6 +36,8 @@ public class AuthServiceImpl implements AuthService {
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter
             .ofPattern("yyyy-MM-dd HH:mm:ss 'UTC'")
             .withZone(ZoneId.of("UTC"));
+
+    private static final long ROTATION_GRACE_PERIOD_SECONDS = 30L;
 
     private final UserRepository userRepository;
     private final PendingRegistrationRepository pendingRegistrationRepository;
@@ -154,20 +157,73 @@ public class AuthServiceImpl implements AuthService {
         RefreshToken refreshToken = refreshTokenRepository.findByToken(refreshTokenValue)
                 .orElseThrow(InvalidTokenException::new);
 
-        if (!refreshToken.isValid()) {
+        // Grace Period Check: If token was rotated within the last 30s (sleep / tab-switch / network replay race condition),
+        // service the active replacement token instead of invalidating the session.
+        if (refreshToken.isRevoked()) {
+            if (refreshToken.getRotatedAt() != null
+                    && refreshToken.getRotatedAt().isAfter(Instant.now().minusSeconds(ROTATION_GRACE_PERIOD_SECONDS))) {
+
+                String replacementTokenStr = refreshToken.getReplacedByToken();
+                if (replacementTokenStr != null) {
+                    Optional<RefreshToken> replacementOpt = refreshTokenRepository.findByToken(replacementTokenStr);
+                    if (replacementOpt.isPresent()) {
+                        RefreshToken replacement = replacementOpt.get();
+                        if (replacement.isValid()) {
+                            User user = replacement.getUser();
+                            if (user.isDeletionPending()) {
+                                String dateMsg = "";
+                                if (user.getDeletionScheduledAt() != null) {
+                                    dateMsg = " on " + DATE_FORMATTER.format(user.getDeletionScheduledAt());
+                                }
+                                throw new AccountDeletionPendingException("Your account is scheduled for permanent deletion" + dateMsg);
+                            }
+
+                            if (!user.isEnabled()) {
+                                throw new AccountDisabledException("Please verify your email address before logging in");
+                            }
+                            String newAccessToken = jwtService.generateAccessToken(user);
+                            long refreshExpirationMillis = jwtService.getRefreshTokenExpirationMillis();
+                            log.info("Serviced replacement refresh token for user [{}] within 30s rotation grace period", user.getEmail());
+                            return new AuthSessionResult(
+                                    newAccessToken,
+                                    jwtService.getAccessTokenExpirationMillis(),
+                                    replacement.getToken(),
+                                    refreshExpirationMillis
+                            );
+                        }
+                    }
+                }
+            }
+
+            log.warn("Revoked refresh token presented past grace period for user [{}]. Revoking all sessions.",
+                    refreshToken.getUser() != null ? refreshToken.getUser().getEmail() : "unknown");
+            if (refreshToken.getUser() != null) {
+                refreshTokenRepository.deleteByUser(refreshToken.getUser());
+            }
+            throw new InvalidTokenException();
+        }
+
+        if (refreshToken.isExpired()) {
             refreshTokenRepository.delete(refreshToken);
             throw new InvalidTokenException();
         }
 
         User user = refreshToken.getUser();
-        if (!user.isEnabled()) {
+        if (user.isDeletionPending()) {
             refreshTokenRepository.delete(refreshToken);
-            throw new AccountDisabledException();
+            String dateMsg = "";
+            if (user.getDeletionScheduledAt() != null) {
+                dateMsg = " on " + DATE_FORMATTER.format(user.getDeletionScheduledAt());
+            }
+            throw new AccountDeletionPendingException("Your account is scheduled for permanent deletion" + dateMsg);
         }
 
-        // Rotate token: delete current token and generate new one
-        refreshTokenRepository.delete(refreshToken);
+        if (!user.isEnabled()) {
+            refreshTokenRepository.delete(refreshToken);
+            throw new AccountDisabledException("Please verify your email address before logging in");
+        }
 
+        // Generate new token pair
         String newAccessToken = jwtService.generateAccessToken(user);
         String newRefreshTokenString = jwtService.generateRefreshTokenString();
         long refreshExpirationMillis = jwtService.getRefreshTokenExpirationMillis();
@@ -180,7 +236,14 @@ public class AuthServiceImpl implements AuthService {
                 .build();
 
         refreshTokenRepository.save(newRefreshToken);
-        log.info("Successfully refreshed session for user [{}]", user.getEmail());
+
+        // Soft-rotate current token: mark revoked & store replacement metadata for 30s grace period
+        refreshToken.setRevoked(true);
+        refreshToken.setRotatedAt(Instant.now());
+        refreshToken.setReplacedByToken(newRefreshTokenString);
+        refreshTokenRepository.save(refreshToken);
+
+        log.info("Successfully rotated refresh session for user [{}]", user.getEmail());
 
         return new AuthSessionResult(
                 newAccessToken,
