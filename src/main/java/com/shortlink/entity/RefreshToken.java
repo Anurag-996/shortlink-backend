@@ -50,16 +50,6 @@ public class RefreshToken {
     @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;
 
-    @Builder.Default
-    @Column(name = "revoked", nullable = false)
-    private boolean revoked = false;
-
-    @Column(name = "replaced_by_token", length = 512)
-    private String replacedByToken;
-
-    @Column(name = "rotated_at")
-    private Instant rotatedAt;
-
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -69,8 +59,8 @@ public class RefreshToken {
         return expiresAt.isBefore(Instant.now());
     }
 
-    // Checks if the token is valid for session rotation.
+    // Checks if the token is valid for session.
     public boolean isValid() {
-        return !revoked && !isExpired();
+        return !isExpired();
     }
 }

@@ -23,8 +23,8 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long
     // Revokes/deletes all active refresh tokens for a user.
     void deleteByUser(User user);
 
-    // Purges expired refresh tokens AND revoked tokens rotated more than 5 minutes ago. Returns number of rows deleted.
+    // Purges expired refresh tokens.
     @Modifying
-    @Query("DELETE FROM RefreshToken r WHERE r.expiresAt < :now OR (r.revoked = true AND r.rotatedAt IS NOT NULL AND r.rotatedAt < :cutoff)")
-    int deleteExpiredAndRotatedTokens(@Param("now") Instant now, @Param("cutoff") Instant cutoff);
+    @Query("DELETE FROM RefreshToken r WHERE r.expiresAt < :now")
+    void deleteExpiredTokens(@Param("now") Instant now);
 }
