@@ -37,7 +37,6 @@ app:
 
   cookie:
     path: /api/auth
-    same-site: Strict
 
   redis:
     ttl-seconds: 86400

@@ -35,6 +35,7 @@ app:
     secret: ${JWT_SECRET}
 
   cookie:
+    same-site: Strict
     secure: false
 
   frontend:
