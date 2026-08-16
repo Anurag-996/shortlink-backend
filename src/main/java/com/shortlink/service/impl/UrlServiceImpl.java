@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import org.springframework.security.access.AccessDeniedException;
 
+import com.shortlink.analytics.repository.ClickEventRepository;
 import com.shortlink.dto.redis.CachedUrl;
 import com.shortlink.dto.request.CreateShortUrlRequest;
 import com.shortlink.dto.response.PageResponse;
@@ -57,6 +58,7 @@ public class UrlServiceImpl implements UrlService {
     );
 
     private final UrlRepository urlRepository;
+    private final ClickEventRepository clickEventRepository;
     private final RedisCacheService redisCacheService;
     private final ShortCodeGenerator shortCodeGenerator;
     private final UrlMapper urlMapper;
@@ -203,11 +205,14 @@ public class UrlServiceImpl implements UrlService {
             }
         }
 
-        // Delete from database
+        // 1. Delete associated click analytics events first to satisfy FK constraint
+        clickEventRepository.deleteByShortUrl(url);
+
+        // 2. Delete URL entity from database
         urlRepository.delete(url);
         log.info("Deleted URL entity with ID: {} and short code: {}", id, url.getShortCode());
 
-        // Evict from Redis cache on deletion
+        // 3. Evict from Redis cache on deletion
         redisCacheService.evictUrl(url.getShortCode());
     }
 
