@@ -33,13 +33,13 @@ public class UrlMapper {
         );
     }
 
-    // Converts a CreateShortUrlRequest DTO to a Url entity, automatically prepending https:// if protocol is omitted.
-    public Url toEntity(CreateShortUrlRequest request, String shortCode) {
-        if (request == null) {
+    // Normalizes destination URL, automatically prepending http:// for localhost or https:// for standard domains.
+    public String normalizeUrl(String rawUrl) {
+        if (rawUrl == null) {
             return null;
         }
 
-        String normalizedUrl = request.originalUrl().trim();
+        String normalizedUrl = rawUrl.trim();
         if (!normalizedUrl.matches("(?i)^https?://.*")) {
             if (normalizedUrl.matches("(?i)^(localhost|127\\.\\d+\\.\\d+\\.\\d+)(:\\d+)?(/.*)?$")) {
                 normalizedUrl = "http://" + normalizedUrl;
@@ -47,6 +47,16 @@ public class UrlMapper {
                 normalizedUrl = "https://" + normalizedUrl;
             }
         }
+        return normalizedUrl;
+    }
+
+    // Converts a CreateShortUrlRequest DTO to a Url entity, automatically prepending https:// if protocol is omitted.
+    public Url toEntity(CreateShortUrlRequest request, String shortCode) {
+        if (request == null) {
+            return null;
+        }
+
+        String normalizedUrl = normalizeUrl(request.originalUrl());
 
         return Url.builder()
             .originalUrl(normalizedUrl)

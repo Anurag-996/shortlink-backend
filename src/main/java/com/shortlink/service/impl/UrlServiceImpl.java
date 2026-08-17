@@ -17,6 +17,7 @@ import org.springframework.security.access.AccessDeniedException;
 import com.shortlink.analytics.repository.ClickEventRepository;
 import com.shortlink.dto.redis.CachedUrl;
 import com.shortlink.dto.request.CreateShortUrlRequest;
+import com.shortlink.dto.request.UpdateUrlRequest;
 import com.shortlink.dto.response.PageResponse;
 import com.shortlink.dto.response.ShortUrlResponse;
 import com.shortlink.entity.Url;
@@ -51,6 +52,9 @@ public class UrlServiceImpl implements UrlService {
             "login", "register", "signup", "signin", "logout",
             "app", "api", "admin", "dashboard", "urls", "settings",
             "auth", "user", "users", "analytics", "overview",
+            "features", "faq", "privacy", "terms", "about", "contact",
+            "support", "pricing", "manifest", "manifest.webmanifest",
+            "opengraph-image", "twitter-image",
             "forgot-password", "reset-password", "verify-email",
             "robots.txt", "sitemap.xml", "favicon.ico", "icon.png",
             "static", "assets", "public", "health", "actuator",
@@ -94,6 +98,47 @@ public class UrlServiceImpl implements UrlService {
         log.info("Successfully created short URL with code: {} for user: {}", savedUrl.getShortCode(), currentUser != null ? currentUser.getEmail() : "anonymous");
 
         // Note: As per architecture rules, URL creation is NOT cached in Redis.
+        return urlMapper.toResponse(savedUrl, baseUrl);
+    }
+
+    @Override
+    @Transactional
+    public ShortUrlResponse updateUrl(Long id, UpdateUrlRequest request) {
+        Url url = urlRepository.findById(id)
+                .orElseThrow(() -> new UrlNotFoundException("URL not found with ID: " + id));
+
+        User currentUser = SecurityUtils.getCurrentUserOrNull();
+        if (currentUser == null) {
+            throw new AccessDeniedException("Authentication required to edit URLs");
+        }
+        if (currentUser.getRole() != Role.ADMIN) {
+            if (url.getUser() == null || !url.getUser().getId().equals(currentUser.getId())) {
+                throw new AccessDeniedException("You do not have permission to edit this URL");
+            }
+        }
+
+        String normalizedUrl = urlMapper.normalizeUrl(request.originalUrl());
+        url.setOriginalUrl(normalizedUrl);
+
+        if (request.expiresAt() != null) {
+            if (request.expiresAt().isBefore(LocalDateTime.now())) {
+                throw new BadRequestException("Expiration time must be in the future");
+            }
+            url.setExpiresAt(request.expiresAt());
+        }
+
+        if (Boolean.TRUE.equals(request.resetAnalytics())) {
+            clickEventRepository.deleteByShortUrl(url);
+            url.setClickCount(0L);
+            log.info("Reset analytics and click count for short code: {}", url.getShortCode());
+        }
+
+        Url savedUrl = urlRepository.save(url);
+        log.info("Successfully updated destination URL for short code: {} to: {}", savedUrl.getShortCode(), savedUrl.getOriginalUrl());
+
+        // Evict from Redis cache so subsequent clicks immediately redirect to new destination
+        redisCacheService.evictUrl(savedUrl.getShortCode());
+
         return urlMapper.toResponse(savedUrl, baseUrl);
     }
 

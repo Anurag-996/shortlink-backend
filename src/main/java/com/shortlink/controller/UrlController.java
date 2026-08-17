@@ -8,12 +8,14 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.shortlink.dto.request.CreateShortUrlRequest;
+import com.shortlink.dto.request.UpdateUrlRequest;
 import com.shortlink.dto.response.PageResponse;
 import com.shortlink.dto.response.ShortUrlResponse;
 import com.shortlink.service.UrlService;
@@ -55,6 +57,16 @@ public class UrlController {
     @GetMapping("/{shortCode}")
     public ResponseEntity<ShortUrlResponse> getUrlDetails(@PathVariable String shortCode) {
         ShortUrlResponse response = urlService.getUrlByShortCode(shortCode);
+        return ResponseEntity.ok(response);
+    }
+
+    // PUT /api/v1/urls/{id} - Updates an existing short URL destination and optional expiration.
+    @PutMapping("/{id}")
+    public ResponseEntity<ShortUrlResponse> updateUrl(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateUrlRequest request
+    ) {
+        ShortUrlResponse response = urlService.updateUrl(id, request);
         return ResponseEntity.ok(response);
     }
 
