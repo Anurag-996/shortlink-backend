@@ -6,6 +6,7 @@ import com.shortlink.analytics.dto.LinkAnalyticsResponse;
 import com.shortlink.analytics.dto.TimeSeriesPoint;
 import com.shortlink.entity.Url;
 
+import java.time.ZoneId;
 import java.util.List;
 
 // Service interface for click tracking and user link analytics operations.
@@ -17,16 +18,20 @@ public interface AnalyticsService {
     // Asynchronously or safely records a raw click event during redirection.
     void recordClick(Url url, String ipAddress, String userAgent, String referer);
 
-    // Retrieves dashboard overview metrics for the authenticated user.
+    // Retrieves dashboard overview metrics for the authenticated user with timezone awareness.
+    AnalyticsOverviewResponse getUserOverview(String range, ZoneId userZone);
     AnalyticsOverviewResponse getUserOverview(String range);
 
-    // Retrieves time-series clicks for all links owned by the authenticated user.
+    // Retrieves time-series clicks for all links owned by the authenticated user with timezone awareness.
+    List<TimeSeriesPoint> getUserClickTimeSeries(String range, ZoneId userZone);
     List<TimeSeriesPoint> getUserClickTimeSeries(String range);
 
-    // Retrieves comprehensive analytics for a specific link owned by the user (or admin).
+    // Retrieves comprehensive analytics for a specific link with timezone awareness.
+    LinkAnalyticsResponse getLinkAnalytics(Long urlId, String range, ZoneId userZone);
     LinkAnalyticsResponse getLinkAnalytics(Long urlId, String range);
 
     // Retrieves time-series clicks for a specific link.
+    List<TimeSeriesPoint> getLinkClickTimeSeries(Long urlId, String range, ZoneId userZone);
     List<TimeSeriesPoint> getLinkClickTimeSeries(Long urlId, String range);
 
     // Retrieves country geographic distribution for a specific link.

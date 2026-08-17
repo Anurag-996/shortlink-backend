@@ -25,8 +25,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -35,7 +38,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-// Implementation of AnalyticsService providing user and link analytics aggregations.
+// Implementation of AnalyticsService providing timezone-aware user and link analytics aggregations.
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -87,7 +90,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
 
     @Override
     @Transactional(readOnly = true)
-    public AnalyticsOverviewResponse getUserOverview(String range) {
+    public AnalyticsOverviewResponse getUserOverview(String range, ZoneId userZone) {
         User user = SecurityUtils.getCurrentUser();
         List<Url> userUrls = getAccessibleUrlsForUser(user);
         if (userUrls.isEmpty()) {
@@ -120,7 +123,13 @@ public class AnalyticsServiceImpl implements AnalyticsService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<TimeSeriesPoint> getUserClickTimeSeries(String range) {
+    public AnalyticsOverviewResponse getUserOverview(String range) {
+        return getUserOverview(range, AnalyticsParserUtil.resolveUserZone(null));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<TimeSeriesPoint> getUserClickTimeSeries(String range, ZoneId userZone) {
         User user = SecurityUtils.getCurrentUser();
         List<Url> userUrls = getAccessibleUrlsForUser(user);
         if (userUrls.isEmpty()) {
@@ -132,6 +141,12 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         return mapToContinuousDailyTimeSeries(rawRows, since, LocalDate.now());
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<TimeSeriesPoint> getUserClickTimeSeries(String range) {
+        return getUserClickTimeSeries(range, AnalyticsParserUtil.resolveUserZone(null));
+    }
+
     private List<Url> getAccessibleUrlsForUser(User user) {
         if (user != null && user.getRole() == Role.ADMIN) {
             return urlRepository.findAll();
@@ -141,10 +156,11 @@ public class AnalyticsServiceImpl implements AnalyticsService {
 
     @Override
     @Transactional(readOnly = true)
-    public LinkAnalyticsResponse getLinkAnalytics(Long urlId, String range) {
+    public LinkAnalyticsResponse getLinkAnalytics(Long urlId, String range, ZoneId userZone) {
         Url url = findAndAuthorizeUrl(urlId);
         LocalDateTime since = parseSinceDate(range);
         LocalDateTime now = LocalDateTime.now();
+        ZoneId effectiveZone = userZone != null ? userZone : AnalyticsParserUtil.resolveUserZone(null);
 
         boolean isActive = url.getExpiresAt() == null || url.getExpiresAt().isAfter(now);
         String status = isActive ? "Active" : "Expired";
@@ -156,7 +172,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         double avgClicksPerDay = roundToOneDecimal((double) totalClicks / days);
 
         List<TimeSeriesPoint> timeSeries = "24h".equalsIgnoreCase(range)
-                ? mapToHourlyTimeSeries(clickEventRepository.getTimeSeriesHourlyByShortUrl(url, since), since)
+                ? mapToHourlyTimeSeries(clickEventRepository.getTimeSeriesHourlyByShortUrl(url, since), since, effectiveZone)
                 : mapToContinuousDailyTimeSeries(clickEventRepository.getTimeSeriesDailyByShortUrl(url, since), since, LocalDate.now());
 
         List<DistributionItem> topCountries = mapToDistributionItems(clickEventRepository.getCountryDistributionByShortUrl(url, since), totalClicks);
@@ -166,7 +182,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         List<DistributionItem> operatingSystems = mapToDistributionItems(clickEventRepository.getOsDistributionByShortUrl(url, since), totalClicks);
         List<DistributionItem> referrers = mapToDistributionItems(clickEventRepository.getRefererDistributionByShortUrl(url, since), totalClicks);
 
-        List<TimeOfDayDistribution> hourlyDistribution = mapToHourlyDistribution(clickEventRepository.getHourlyDistributionByShortUrl(url, since), totalClicks);
+        List<TimeOfDayDistribution> hourlyDistribution = mapToHourlyDistribution(clickEventRepository.getHourlyDistributionByShortUrl(url, since), totalClicks, effectiveZone);
         List<DayOfWeekDistribution> dayOfWeekDistribution = mapToDayOfWeekDistribution(clickEventRepository.getDayOfWeekDistributionByShortUrl(url, since), totalClicks);
 
         List<InsightItem> insights = generateInsights(totalClicks, uniqueVisitors, devices, topCountries, referrers, hourlyDistribution, dayOfWeekDistribution);
@@ -196,13 +212,26 @@ public class AnalyticsServiceImpl implements AnalyticsService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<TimeSeriesPoint> getLinkClickTimeSeries(Long urlId, String range) {
+    public LinkAnalyticsResponse getLinkAnalytics(Long urlId, String range) {
+        return getLinkAnalytics(urlId, range, AnalyticsParserUtil.resolveUserZone(null));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<TimeSeriesPoint> getLinkClickTimeSeries(Long urlId, String range, ZoneId userZone) {
         Url url = findAndAuthorizeUrl(urlId);
         LocalDateTime since = parseSinceDate(range);
+        ZoneId effectiveZone = userZone != null ? userZone : AnalyticsParserUtil.resolveUserZone(null);
         if ("24h".equalsIgnoreCase(range)) {
-            return mapToHourlyTimeSeries(clickEventRepository.getTimeSeriesHourlyByShortUrl(url, since), since);
+            return mapToHourlyTimeSeries(clickEventRepository.getTimeSeriesHourlyByShortUrl(url, since), since, effectiveZone);
         }
         return mapToContinuousDailyTimeSeries(clickEventRepository.getTimeSeriesDailyByShortUrl(url, since), since, LocalDate.now());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<TimeSeriesPoint> getLinkClickTimeSeries(Long urlId, String range) {
+        return getLinkClickTimeSeries(urlId, range, AnalyticsParserUtil.resolveUserZone(null));
     }
 
     @Override
@@ -308,7 +337,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         return points;
     }
 
-    private List<TimeSeriesPoint> mapToHourlyTimeSeries(List<Object[]> rows, LocalDateTime since) {
+    private List<TimeSeriesPoint> mapToHourlyTimeSeries(List<Object[]> rows, LocalDateTime since, ZoneId userZone) {
         Map<String, Long> countMap = new HashMap<>();
         if (rows != null) {
             for (Object[] row : rows) {
@@ -318,14 +347,24 @@ public class AnalyticsServiceImpl implements AnalyticsService {
             }
         }
 
+        int offsetHours = 0;
+        if (userZone != null) {
+            try {
+                ZoneOffset offset = userZone.getRules().getOffset(Instant.now());
+                offsetHours = Math.round((float) offset.getTotalSeconds() / 3600.0f);
+            } catch (java.time.DateTimeException ignored) {}
+        }
+
         List<TimeSeriesPoint> points = new ArrayList<>();
         LocalDateTime current = since.truncatedTo(ChronoUnit.HOURS);
         LocalDateTime now = LocalDateTime.now();
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:00");
 
         while (!current.isAfter(now)) {
-            String hourKey = current.format(formatter);
-            points.add(new TimeSeriesPoint(hourKey, countMap.getOrDefault(hourKey, 0L)));
+            String utcHourKey = current.format(formatter);
+            LocalDateTime localTime = current.plusHours(offsetHours);
+            String localHourKey = localTime.format(formatter);
+            points.add(new TimeSeriesPoint(localHourKey, countMap.getOrDefault(utcHourKey, 0L)));
             current = current.plusHours(1);
         }
 
@@ -349,20 +388,39 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         return items;
     }
 
-    private List<TimeOfDayDistribution> mapToHourlyDistribution(List<Object[]> rows, long totalClicks) {
-        Map<String, Long> hourMap = new HashMap<>();
+    // High-performance in-memory timezone shifter for 24 hourly buckets (O(24) execution in microseconds)
+    private List<TimeOfDayDistribution> mapToHourlyDistribution(List<Object[]> rows, long totalClicks, ZoneId userZone) {
+        Map<Integer, Long> utcHourMap = new HashMap<>();
         if (rows != null) {
             for (Object[] row : rows) {
                 if (row != null && row.length >= 2 && row[0] != null && row[1] != null) {
-                    hourMap.put(row[0].toString().trim(), ((Number) row[1]).longValue());
+                    try {
+                        int h = Integer.parseInt(row[0].toString().trim());
+                        utcHourMap.put(h, ((Number) row[1]).longValue());
+                    } catch (NumberFormatException ignored) {}
                 }
             }
+        }
+
+        int offsetHours = 0;
+        if (userZone != null) {
+            try {
+                ZoneOffset offset = userZone.getRules().getOffset(Instant.now());
+                offsetHours = Math.round((float) offset.getTotalSeconds() / 3600.0f);
+            } catch (java.time.DateTimeException ignored) {}
+        }
+
+        Map<Integer, Long> localHourMap = new HashMap<>();
+        for (Map.Entry<Integer, Long> entry : utcHourMap.entrySet()) {
+            int localH = (entry.getKey() + offsetHours) % 24;
+            if (localH < 0) localH += 24;
+            localHourMap.put(localH, localHourMap.getOrDefault(localH, 0L) + entry.getValue());
         }
 
         List<TimeOfDayDistribution> list = new ArrayList<>();
         for (int h = 0; h < 24; h++) {
             String hourStr = String.format("%02d", h);
-            long count = hourMap.getOrDefault(hourStr, 0L);
+            long count = localHourMap.getOrDefault(h, 0L);
             double percentage = totalClicks > 0 ? roundToOneDecimal((count * 100.0) / totalClicks) : 0.0;
             list.add(new TimeOfDayDistribution(hourStr, count, percentage));
         }
@@ -437,11 +495,12 @@ public class AnalyticsServiceImpl implements AnalyticsService {
             }
         }
 
-        // 6. Peak hour insight
+        // 6. Peak hour insight with friendly 12-hour/24-hour formatting in user's timezone
         if (hourly != null && !hourly.isEmpty()) {
             TimeOfDayDistribution peakHour = Collections.max(hourly, (a, b) -> Long.compare(a.getCount(), b.getCount()));
             if (peakHour.getCount() > 0) {
-                insights.add(new InsightItem("time", String.format("Peak engagement time is around %s.", peakHour.getHour())));
+                String friendlyTime = AnalyticsParserUtil.formatFriendlyHour(peakHour.getHour());
+                insights.add(new InsightItem("time", String.format("Peak engagement time is around %s.", friendlyTime)));
             }
         }
 

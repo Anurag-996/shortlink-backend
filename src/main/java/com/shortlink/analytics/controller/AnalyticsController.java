@@ -6,17 +6,20 @@ import com.shortlink.analytics.dto.DistributionItem;
 import com.shortlink.analytics.dto.LinkAnalyticsResponse;
 import com.shortlink.analytics.dto.TimeSeriesPoint;
 import com.shortlink.analytics.service.AnalyticsService;
+import com.shortlink.analytics.util.AnalyticsParserUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.ZoneId;
 import java.util.List;
 
-// REST controller exposing user dashboard and individual short URL analytics endpoints.
+// REST controller exposing user dashboard and individual short URL analytics endpoints with client timezone conversion.
 @RestController
 @RequestMapping("/api/analytics")
 @RequiredArgsConstructor
@@ -28,14 +31,18 @@ public class AnalyticsController {
 
     @GetMapping("/overview")
     public ResponseEntity<AnalyticsOverviewResponse> getUserOverview(
-            @RequestParam(name = "range", defaultValue = "30d") String range) {
-        return ResponseEntity.ok(analyticsService.getUserOverview(range));
+            @RequestParam(name = "range", defaultValue = "30d") String range,
+            @RequestHeader(value = "X-Timezone", required = false) String timeZoneHeader) {
+        ZoneId userZone = AnalyticsParserUtil.resolveUserZone(timeZoneHeader);
+        return ResponseEntity.ok(analyticsService.getUserOverview(range, userZone));
     }
 
     @GetMapping("/clicks")
     public ResponseEntity<List<TimeSeriesPoint>> getUserClickTimeSeries(
-            @RequestParam(name = "range", defaultValue = "30d") String range) {
-        return ResponseEntity.ok(analyticsService.getUserClickTimeSeries(range));
+            @RequestParam(name = "range", defaultValue = "30d") String range,
+            @RequestHeader(value = "X-Timezone", required = false) String timeZoneHeader) {
+        ZoneId userZone = AnalyticsParserUtil.resolveUserZone(timeZoneHeader);
+        return ResponseEntity.ok(analyticsService.getUserClickTimeSeries(range, userZone));
     }
 
     // --- Individual Link Analytics ---
@@ -43,15 +50,19 @@ public class AnalyticsController {
     @GetMapping("/urls/{id}")
     public ResponseEntity<LinkAnalyticsResponse> getLinkAnalytics(
             @PathVariable Long id,
-            @RequestParam(name = "range", defaultValue = "30d") String range) {
-        return ResponseEntity.ok(analyticsService.getLinkAnalytics(id, range));
+            @RequestParam(name = "range", defaultValue = "30d") String range,
+            @RequestHeader(value = "X-Timezone", required = false) String timeZoneHeader) {
+        ZoneId userZone = AnalyticsParserUtil.resolveUserZone(timeZoneHeader);
+        return ResponseEntity.ok(analyticsService.getLinkAnalytics(id, range, userZone));
     }
 
     @GetMapping("/urls/{id}/clicks")
     public ResponseEntity<List<TimeSeriesPoint>> getLinkClickTimeSeries(
             @PathVariable Long id,
-            @RequestParam(name = "range", defaultValue = "30d") String range) {
-        return ResponseEntity.ok(analyticsService.getLinkClickTimeSeries(id, range));
+            @RequestParam(name = "range", defaultValue = "30d") String range,
+            @RequestHeader(value = "X-Timezone", required = false) String timeZoneHeader) {
+        ZoneId userZone = AnalyticsParserUtil.resolveUserZone(timeZoneHeader);
+        return ResponseEntity.ok(analyticsService.getLinkClickTimeSeries(id, range, userZone));
     }
 
     @GetMapping("/urls/{id}/geography")

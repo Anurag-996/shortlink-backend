@@ -153,4 +153,37 @@ public final class AnalyticsParserUtil {
             return Integer.toHexString(raw.hashCode());
         }
     }
+
+    // Resolves ZoneId from client request header or defaults to Asia/Kolkata / system zone.
+    public static java.time.ZoneId resolveUserZone(String timeZoneHeader) {
+        if (timeZoneHeader != null && !timeZoneHeader.isBlank()) {
+            try {
+                return java.time.ZoneId.of(timeZoneHeader.trim());
+            } catch (java.time.DateTimeException ignored) {
+                log.debug("Invalid timezone header: {}", timeZoneHeader);
+            }
+        }
+        try {
+            return java.time.ZoneId.of("Asia/Kolkata");
+        } catch (java.time.DateTimeException e) {
+            return java.time.ZoneId.systemDefault();
+        }
+    }
+
+    // Converts hour string (e.g. "18" or "18:00") into friendly 12-hour / 24-hour format (e.g. "6:00 PM (18:00)").
+    public static String formatFriendlyHour(String hourStr) {
+        if (hourStr == null || hourStr.isBlank()) {
+            return "12:00 PM";
+        }
+        try {
+            String clean = hourStr.replace(":00", "").trim();
+            int h = Integer.parseInt(clean);
+            if (h == 0) return "12:00 AM (00:00)";
+            if (h == 12) return "12:00 PM (12:00)";
+            if (h > 12) return (h - 12) + ":00 PM (" + String.format("%02d:00", h) + ")";
+            return h + ":00 AM (" + String.format("%02d:00", h) + ")";
+        } catch (NumberFormatException e) {
+            return hourStr;
+        }
+    }
 }
